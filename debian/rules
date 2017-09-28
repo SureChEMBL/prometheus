@@ -1,0 +1,49 @@
+#!/usr/bin/make -f
+# -*- Mode: makefile -*-
+include /usr/share/dpkg/pkg-info.mk
+
+export DH_VERBOSE=1
+# Include test fixtures.
+export DH_GOLANG_INSTALL_EXTRA := discovery/file/fixtures \
+    storage/local/fixtures config/testdata promql/testdata retrieval/testdata \
+    promql/fuzz-data
+# Do not build examples.
+export DH_GOLANG_EXCLUDES := documentation vendor
+
+BUILDDIR := $(CURDIR)/build
+METAPKG := github.com/prometheus/common
+
+# Taken and modified from the project's Makefile.
+
+BRANCH     := debian/sid
+USER       := pkg-go-maintainers@lists.alioth.debian.org
+BUILD_DATE := $(shell date --utc --date='@$(SOURCE_DATE_EPOCH)' \
+    +%Y%m%d-%H:%M:%S)
+GO_VERSION := $(shell go version | sed 's/go version \(\S*\).*/\1/')
+BUILDFLAGS := -ldflags \
+  " -X $(METAPKG)/version.Version=$(DEB_VERSION_UPSTREAM)\
+    -X $(METAPKG)/version.Revision=$(DEB_VERSION)\
+    -X $(METAPKG)/version.Branch=$(BRANCH)\
+    -X $(METAPKG)/version.BuildUser=$(USER)\
+    -X $(METAPKG)/version.BuildDate=$(BUILD_DATE)\
+    -X $(METAPKG)/version.GoVersion=$(GO_VERSION)"
+
+ifeq ($(DEB_HOST_ARCH_CPU),arm)
+# Tests in armel take way too long, and run out of memory in armhf.
+TESTFLAGS  := -timeout 60m -short
+else
+TESTFLAGS  := -timeout 20m
+endif
+
+%:
+	dh $@ --buildsystem=golang --with=golang,systemd \
+            --builddirectory=$(BUILDDIR)
+
+override_dh_auto_build:
+	dh_auto_build -- $(BUILDFLAGS)
+
+override_dh_auto_test:
+	dh_auto_test -- $(TESTFLAGS)
+
+override_dh_auto_install:
+	dh_auto_install -- --no-source

@@ -1,0 +1,166 @@
+Description: Avoid embedding blobs into the prometheus binary, instead use
+ files installed on disk.
+--- a/web/web.go
++++ b/web/web.go
+@@ -14,7 +14,6 @@
+ package web
+ 
+ import (
+-	"bytes"
+ 	"encoding/json"
+ 	"fmt"
+ 	"io"
+@@ -51,7 +50,6 @@
+ 	"github.com/prometheus/prometheus/template"
+ 	"github.com/prometheus/prometheus/util/httputil"
+ 	api_v1 "github.com/prometheus/prometheus/web/api/v1"
+-	"github.com/prometheus/prometheus/web/ui"
+ )
+ 
+ var localhostRepresentations = []string{"127.0.0.1", "localhost"}
+@@ -121,7 +119,7 @@
+ 	ExternalURL          *url.URL
+ 	RoutePrefix          string
+ 	MetricsPath          string
+-	UseLocalAssets       bool
++	LocalAssets          string
+ 	UserAssetsPath       string
+ 	ConsoleTemplatesPath string
+ 	ConsoleLibrariesPath string
+@@ -195,7 +193,7 @@
+ 
+ 	router.Get("/consoles/*filepath", instrf("consoles", h.consoles))
+ 
+-	router.Get("/static/*filepath", instrf("static", serveStaticAsset))
++	router.Get("/static/*filepath", instrf("static", route.FileServe(filepath.Join(o.LocalAssets, "/static"))))
+ 
+ 	if o.UserAssetsPath != "" {
+ 		router.Get("/user/*filepath", instrf("user", route.FileServe(o.UserAssetsPath)))
+@@ -217,28 +215,6 @@
+ 	return h
+ }
+ 
+-func serveStaticAsset(w http.ResponseWriter, req *http.Request) {
+-	fp := route.Param(req.Context(), "filepath")
+-	fp = filepath.Join("web/ui/static", fp)
+-
+-	info, err := ui.AssetInfo(fp)
+-	if err != nil {
+-		log.With("file", fp).Warn("Could not get file info: ", err)
+-		w.WriteHeader(http.StatusNotFound)
+-		return
+-	}
+-	file, err := ui.Asset(fp)
+-	if err != nil {
+-		if err != io.EOF {
+-			log.With("file", fp).Warn("Could not get file: ", err)
+-		}
+-		w.WriteHeader(http.StatusNotFound)
+-		return
+-	}
+-
+-	http.ServeContent(w, req, info.Name(), info.ModTime(), bytes.NewReader(file))
+-}
+-
+ // ListenError returns the receive-only channel that signals errors while starting the web server.
+ func (h *Handler) ListenError() <-chan error {
+ 	return h.listenErrCh
+@@ -505,11 +481,11 @@
+ }
+ 
+ func (h *Handler) getTemplate(name string) (string, error) {
+-	baseTmpl, err := ui.Asset("web/ui/templates/_base.html")
++	baseTmpl, err := ioutil.ReadFile(filepath.Join(h.options.LocalAssets, "templates/_base.html"))
+ 	if err != nil {
+ 		return "", fmt.Errorf("error reading base template: %s", err)
+ 	}
+-	pageTmpl, err := ui.Asset(filepath.Join("web/ui/templates", name))
++	pageTmpl, err := ioutil.ReadFile(filepath.Join(h.options.LocalAssets, "templates", name))
+ 	if err != nil {
+ 		return "", fmt.Errorf("error reading page template %s: %s", name, err)
+ 	}
+--- a/console_libraries/prom.lib
++++ b/console_libraries/prom.lib
+@@ -1,14 +1,13 @@
+ {{/* vim: set ft=html: */}}
+ {{/* Load Prometheus console library JS/CSS. Should go in <head> */}}
+ {{ define "prom_console_head" }}
+-<link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/rickshaw/rickshaw.min.css">
+-<link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/bootstrap-3.3.1/css/bootstrap.min.css">
++<link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/rickshaw/rickshaw.min.css">
++<link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/bootstrap/css/bootstrap.min.css">
+ <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/prom_console.css">
+-<script src="{{ pathPrefix }}/static/vendor/rickshaw/vendor/d3.v3.js"></script>
+-<script src="{{ pathPrefix }}/static/vendor/rickshaw/vendor/d3.layout.min.js"></script>
+-<script src="{{ pathPrefix }}/static/vendor/rickshaw/rickshaw.min.js"></script>
+-<script src="{{ pathPrefix }}/static/vendor/js/jquery.min.js"></script>
+-<script src="{{ pathPrefix }}/static/vendor/bootstrap-3.3.1/js/bootstrap.min.js"></script>
++<script src="{{ pathPrefix }}/static/d3/d3.js"></script>
++<script src="{{ pathPrefix }}/static/rickshaw/rickshaw.min.js"></script>
++<script src="{{ pathPrefix }}/static/jquery/jquery.min.js"></script>
++<script src="{{ pathPrefix }}/static/bootstrap/js/bootstrap.min.js"></script>
+ 
+ <script>
+ var PATH_PREFIX = "{{ pathPrefix }}";
+--- a/web/ui/templates/_base.html
++++ b/web/ui/templates/_base.html
+@@ -4,10 +4,10 @@
+     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+     <title>Prometheus Time Series Collection and Processing Server</title>
+     <link rel="shortcut icon" href="{{ pathPrefix }}/static/img/favicon.ico?v={{ buildVersion }}">
+-    <script src="{{ pathPrefix }}/static/vendor/js/jquery.min.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/bootstrap-3.3.1/js/bootstrap.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/jquery/jquery.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/bootstrap/js/bootstrap.min.js?v={{ buildVersion }}"></script>
+ 
+-    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/bootstrap-3.3.1/css/bootstrap.min.css?v={{ buildVersion }}">
++    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/bootstrap/css/bootstrap.min.css?v={{ buildVersion }}">
+     <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/prometheus.css?v={{ buildVersion }}">
+ 
+     <script>
+--- a/cmd/prometheus/config.go
++++ b/cmd/prometheus/config.go
+@@ -132,6 +132,11 @@
+ 		"Path under which to expose metrics.",
+ 	)
+ 	cfg.fs.StringVar(
++		&cfg.web.LocalAssets, "web.local-assets",
++		"/usr/share/prometheus/web/",
++		"Path to static assets/templates directory.",
++	)
++	cfg.fs.StringVar(
+ 		&cfg.web.UserAssetsPath, "web.user-assets", "",
+ 		"Path to static asset directory, available at /user.",
+ 	)
+--- a/web/ui/templates/graph.html
++++ b/web/ui/templates/graph.html
+@@ -1,20 +1,19 @@
+ {{define "head"}}
+     <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/graph.css?v={{ buildVersion }}">
+ 
+-    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/rickshaw/rickshaw.min.css?v={{ buildVersion }}">
+-    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/eonasdan-bootstrap-datetimepicker/bootstrap-datetimepicker.min.css?v={{ buildVersion }}">
++    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/rickshaw/rickshaw.min.css?v={{ buildVersion }}">
++    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/eonasdan-bootstrap-datetimepicker/bootstrap-datetimepicker.min.css?v={{ buildVersion }}">
+ 
+-    <script src="{{ pathPrefix }}/static/vendor/rickshaw/vendor/d3.v3.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/rickshaw/vendor/d3.layout.min.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/rickshaw/rickshaw.min.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/moment/moment.min.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/eonasdan-bootstrap-datetimepicker/bootstrap-datetimepicker.min.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/bootstrap3-typeahead/bootstrap3-typeahead.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/d3/d3.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/rickshaw/rickshaw.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/moment/moment.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/eonasdan-bootstrap-datetimepicker/bootstrap-datetimepicker.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/vendor/bootstrap3-typeahead/bootstrap3-typeahead.js?v={{ buildVersion }}"></script>
+     <script src="{{ pathPrefix }}/static/vendor/fuzzy/fuzzy.js?v={{ buildVersion }}"></script>
+ 
+-    <script src="{{ pathPrefix }}/static/vendor/mustache/mustache.min.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/mustache/mustache.min.js?v={{ buildVersion }}"></script>
+     <script src="{{ pathPrefix }}/static/vendor/js/jquery.selection.js?v={{ buildVersion }}"></script>
+-    <script src="{{ pathPrefix }}/static/vendor/js/jquery.hotkeys.js?v={{ buildVersion }}"></script>
++    <script src="{{ pathPrefix }}/static/jquery-hotkeys/jquery.hotkeys.js?v={{ buildVersion }}"></script>
+ 
+     <script src="{{ pathPrefix }}/static/js/graph.js?v={{ buildVersion }}"></script>
+ 

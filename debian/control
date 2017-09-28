@@ -1,0 +1,71 @@
+Source: prometheus
+Maintainer: Debian Go Packaging Team <pkg-go-maintainers@lists.alioth.debian.org>
+Uploaders: Martín Ferrari <tincho@debian.org>,
+Section: net
+Testsuite: autopkgtest-pkg-go
+Priority: extra
+Build-Depends: debhelper (>= 9.0.0),
+               dh-golang (>= 1.17~),
+               dh-systemd,
+               golang-github-asaskevich-govalidator-dev,
+               golang-github-aws-aws-sdk-go-dev,
+               golang-github-azure-azure-sdk-for-go-dev,
+               golang-github-azure-go-autorest-dev (>= 8),
+               golang-github-fsnotify-fsnotify-dev,
+               golang-github-golang-snappy-dev,
+               golang-github-gophercloud-gophercloud-dev,
+               golang-github-hashicorp-consul-dev,
+               golang-github-miekg-dns-dev (>= 0.0~git20170501),
+               golang-github-opentracing-contrib-go-stdlib-dev,
+               golang-github-opentracing-opentracing-go-dev,
+               golang-github-prometheus-client-golang-dev,
+               golang-github-prometheus-client-model-dev,
+               golang-github-prometheus-common-dev (>= 0+git20170707),
+               golang-github-samuel-go-zookeeper-dev,
+               golang-github-stretchr-testify-dev,
+               golang-github-syndtr-goleveldb-dev,
+               golang-go (>= 2:1.8~),
+               golang-golang-x-net-dev,
+               golang-golang-x-oauth2-google-dev,
+               golang-golang-x-time-dev,
+               golang-google-api-dev,
+               golang-gopkg-yaml.v2-dev,
+Standards-Version: 4.1.0
+Vcs-Browser: https://anonscm.debian.org/cgit/pkg-go/packages/prometheus.git
+Vcs-Git: https://anonscm.debian.org/git/pkg-go/packages/prometheus.git
+Homepage: https://prometheus.io/
+XS-Go-Import-Path: github.com/prometheus/prometheus
+
+Package: prometheus
+Architecture: any
+Depends: adduser,
+         daemon | systemd-sysv,
+         libjs-bootstrap,
+         libjs-eonasdan-bootstrap-datetimepicker,
+         libjs-jquery (>= 1.11.3~),
+         libjs-jquery-hotkeys,
+         libjs-moment,
+         libjs-mustache (>= 2.3.0-1~),
+         libjs-rickshaw,
+         ${misc:Depends},
+         ${shlibs:Depends},
+Recommends: prometheus-node-exporter,
+Built-Using: ${misc:Built-Using},
+Description: Monitoring system and time series database
+ Prometheus is a systems and services monitoring system. It collects metrics
+ from configured targets at given intervals, evaluates rule expressions,
+ displays the results, and can trigger alerts if some condition is observed to
+ be true.
+ .
+ Prometheus' main distinguishing features as compared to other monitoring
+ systems are:
+ .
+  * A multi-dimensional data model (timeseries defined by metric name and set
+    of key/value dimensions).
+  * A flexible query language to leverage this dimensionality.
+  * No dependency on distributed storage; single server nodes are autonomous.
+  * Timeseries collection happens via a pull model over HTTP.
+  * Pushing timeseries is supported via an intermediary gateway.
+  * Targets are discovered via service discovery or static configuration.
+  * Multiple modes of graphing and dashboarding support.
+  * Federation support coming soon.
